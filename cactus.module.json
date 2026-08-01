@@ -1,0 +1,35 @@
+{
+  "name": "address-lookup-for-shop",
+  "version": "0.1.0",
+  "tablePrefix": "alk_",
+  "description": "Lets shoppers find their delivery address by typing the first line of it at checkout. Suggestions appear as they type, one click fills in the whole address, and anyone who prefers typing it all out can simply carry on - the fields still work exactly as before. Powered by Ideal Postcodes, so you will need an API key from them (they charge per lookup, which is rather the point of only looking up what gets typed).",
+  "requiresCoreVersion": "0.5.839",
+  "requiresModules": [
+    {
+      "name": "shop",
+      "minVersion": "0.1.163"
+    }
+  ],
+  "requiredEnvVars": [],
+  "permissions": [],
+  "navEntries": [],
+  "cookieCategories": [],
+  "settingsTabs": [
+    {
+      "id": "address-lookup-for-shop",
+      "label": "Address lookup",
+      "permission": "shop.manage",
+      "host": "shop.settings-sub-tabs",
+      "import": "./components/SettingsTab",
+      "component": "AddressLookupSettingsTab"
+    }
+  ],
+  "extensionPoints": [
+    {
+      "point": "shop.checkout-address-lookup",
+      "id": "ideal-postcodes",
+      "import": "./components/AddressLookup",
+      "component": "AddressLookupField"
+    }
+  ]
+}
