@@ -13,6 +13,7 @@ Shoppers type the first line of their address into the ordinary Address line 1 f
 
 - The module registers a client component against shop's `shop.checkout-address-lookup` extension point. Shop keeps ownership of the field's markup and styling; this module layers the suggestions dropdown, keyboard navigation and ARIA combobox wiring on top.
 - Lookups are proxied through the module's own API routes, so the key never reaches the browser. Requests are rate-limited per IP and only fire after three typed characters, with a debounce - Ideal Postcodes bills per lookup.
+- Only the shopper's own typing counts. A browser autofill (Safari's AutoFill, a password manager, a saved address) fills the whole form at once and fires the same change event a keystroke does, so the field checks the change is focused, is not flagged as a replacement, and carries a real editing inputType before looking anything up. An autofilled address is left alone, and closes any suggestions already showing.
 - If the key is missing, the provider is down, or the shopper is offline, the field quietly degrades to a plain input. Checkout never breaks because lookup could not help.
 
 ## Settings

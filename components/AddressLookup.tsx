@@ -22,12 +22,36 @@ export function AddressLookupField({ onSelect, renderInput }: ShopCheckoutAddres
   const unavailable = useRef(false)
   const fetchSeq = useRef(0)
   const debounce = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // When the shopper last pressed a key in this field. Only consulted for
+  // changes that arrive with no inputType at all (see isShopperEdit).
+  const lastKeyAt = useRef(0)
 
   useEffect(() => () => { if (debounce.current) clearTimeout(debounce.current) }, [])
 
   function close() {
     setOpen(false)
     setActiveIndex(-1)
+  }
+
+  // Autofill - Safari's AutoFill, a password manager, the browser's saved
+  // address - drops the whole form in at once and fires the very same change
+  // event a keystroke does, so the field would look up an address nobody was
+  // typing. A change only counts as the shopper editing this field when:
+  //   1. the field is actually focused, which rules out a fill triggered from
+  //      one of the other boxes (the usual Safari case),
+  //   2. it is not reported as a replacement - Chrome labels autofill
+  //      'insertReplacementText',
+  //   3. it carries an inputType at all - WebKit's autofill dispatches an
+  //      input event with an empty one, where real editing says 'insertText',
+  //      'insertFromPaste', 'deleteContentBackward' and so on. Nothing but a
+  //      recent keypress vouches for a change with no inputType.
+  function isShopperEdit(e: React.FormEvent<HTMLDivElement>, target: HTMLInputElement) {
+    if (typeof document !== 'undefined' && document.activeElement !== target) return false
+    const native = e.nativeEvent as Partial<InputEvent>
+    const inputType = typeof native?.inputType === 'string' ? native.inputType : ''
+    if (inputType === 'insertReplacementText') return false
+    if (inputType) return true
+    return Date.now() - lastKeyAt.current < 1000
   }
 
   // Driven by the shopper's keystrokes (React only fires onChange for user
@@ -40,6 +64,13 @@ export function AddressLookupField({ onSelect, renderInput }: ShopCheckoutAddres
     const target = e.target as HTMLInputElement
     const query = typeof target.value === 'string' ? target.value.trim() : ''
     const seq = ++fetchSeq.current
+    // An autofilled line 1 leaves a plain field behind, and drops any list
+    // already showing - the address it was suggesting has just been replaced.
+    if (!isShopperEdit(e, target)) {
+      setSuggestions([])
+      close()
+      return
+    }
     if (query.length < 3) {
       setSuggestions([])
       close()
@@ -75,6 +106,7 @@ export function AddressLookupField({ onSelect, renderInput }: ShopCheckoutAddres
   }
 
   function onKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
+    lastKeyAt.current = Date.now()
     if (!open || suggestions.length === 0) return
     if (e.key === 'ArrowDown') {
       e.preventDefault()
