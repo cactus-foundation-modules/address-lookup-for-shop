@@ -9,11 +9,13 @@
 import { useEffect, useRef, useState } from 'react'
 import type { ShopCheckoutAddressLookupProps } from '@/modules/shop/components/public/checkout-address-lookup'
 import type { AlkSuggestion } from '@/modules/address-lookup-for-shop/lib/types'
+import { isShopperEdit, type AlkEditIntent } from '@/modules/address-lookup-for-shop/lib/edit-intent'
 
 const BASE = '/api/m/address-lookup-for-shop/public'
 const LISTBOX_ID = 'alk-address-suggestions'
+const NO_INTENT: AlkEditIntent = { at: 0, inputType: '' }
 
-export function AddressLookupField({ onSelect, renderInput }: ShopCheckoutAddressLookupProps) {
+export function AddressLookupField({ value, onSelect, renderInput }: ShopCheckoutAddressLookupProps) {
   const [suggestions, setSuggestions] = useState<AlkSuggestion[]>([])
   const [open, setOpen] = useState(false)
   const [activeIndex, setActiveIndex] = useState(-1)
@@ -22,36 +24,46 @@ export function AddressLookupField({ onSelect, renderInput }: ShopCheckoutAddres
   const unavailable = useRef(false)
   const fetchSeq = useRef(0)
   const debounce = useRef<ReturnType<typeof setTimeout> | null>(null)
-  // When the shopper last pressed a key in this field. Only consulted for
-  // changes that arrive with no inputType at all (see isShopperEdit).
-  const lastKeyAt = useRef(0)
+  const wrapper = useRef<HTMLDivElement | null>(null)
+  // Stamped by the native beforeinput event, which fires for the shopper's own
+  // editing and not for a value the browser fills in for them. Consumed by the
+  // next change (see lib/edit-intent.ts for the whole argument).
+  const editIntent = useRef<AlkEditIntent>(NO_INTENT)
 
   useEffect(() => () => { if (debounce.current) clearTimeout(debounce.current) }, [])
+
+  // A native listener rather than a React prop: React's onBeforeInput is its
+  // own synthetic affair, and this needs the browser's actual beforeinput.
+  useEffect(() => {
+    const node = wrapper.current
+    if (!node) return
+    function stamp(e: Event) {
+      const inputType = (e as InputEvent).inputType
+      editIntent.current = { at: Date.now(), inputType: typeof inputType === 'string' ? inputType : '' }
+    }
+    node.addEventListener('beforeinput', stamp)
+    return () => node.removeEventListener('beforeinput', stamp)
+  }, [])
 
   function close() {
     setOpen(false)
     setActiveIndex(-1)
   }
 
-  // Autofill - Safari's AutoFill, a password manager, the browser's saved
-  // address - drops the whole form in at once and fires the very same change
-  // event a keystroke does, so the field would look up an address nobody was
-  // typing. A change only counts as the shopper editing this field when:
-  //   1. the field is actually focused, which rules out a fill triggered from
-  //      one of the other boxes (the usual Safari case),
-  //   2. it is not reported as a replacement - Chrome labels autofill
-  //      'insertReplacementText',
-  //   3. it carries an inputType at all - WebKit's autofill dispatches an
-  //      input event with an empty one, where real editing says 'insertText',
-  //      'insertFromPaste', 'deleteContentBackward' and so on. Nothing but a
-  //      recent keypress vouches for a change with no inputType.
-  function isShopperEdit(e: React.FormEvent<HTMLDivElement>, target: HTMLInputElement) {
-    if (typeof document !== 'undefined' && document.activeElement !== target) return false
+  function shopperTyped(e: React.FormEvent<HTMLDivElement>, target: HTMLInputElement) {
+    const intent = editIntent.current
+    editIntent.current = NO_INTENT
     const native = e.nativeEvent as Partial<InputEvent>
-    const inputType = typeof native?.inputType === 'string' ? native.inputType : ''
-    if (inputType === 'insertReplacementText') return false
-    if (inputType) return true
-    return Date.now() - lastKeyAt.current < 1000
+    return isShopperEdit({
+      focused: typeof document !== 'undefined' && document.activeElement === target,
+      intent,
+      inputType: typeof native?.inputType === 'string' ? native.inputType : '',
+      // The value prop is still the pre-change one here: shop's state update
+      // has been queued but React has not re-rendered yet.
+      previousValue: value,
+      nextValue: typeof target.value === 'string' ? target.value : '',
+      now: Date.now(),
+    })
   }
 
   // Driven by the shopper's keystrokes (React only fires onChange for user
@@ -66,7 +78,7 @@ export function AddressLookupField({ onSelect, renderInput }: ShopCheckoutAddres
     const seq = ++fetchSeq.current
     // An autofilled line 1 leaves a plain field behind, and drops any list
     // already showing - the address it was suggesting has just been replaced.
-    if (!isShopperEdit(e, target)) {
+    if (!shopperTyped(e, target)) {
       setSuggestions([])
       close()
       return
@@ -106,7 +118,6 @@ export function AddressLookupField({ onSelect, renderInput }: ShopCheckoutAddres
   }
 
   function onKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
-    lastKeyAt.current = Date.now()
     if (!open || suggestions.length === 0) return
     if (e.key === 'ArrowDown') {
       e.preventDefault()
@@ -129,7 +140,7 @@ export function AddressLookupField({ onSelect, renderInput }: ShopCheckoutAddres
     // Behaviour rides the bubble phase on this wrapper rather than being
     // injected as input handlers: shop's input keeps its own handlers, and the
     // hooks lint accepts ref-touching callbacks only as JSX event props.
-    <div style={{ position: 'relative' }} onChange={handleChange} onKeyDown={onKeyDown} onBlur={close}>
+    <div ref={wrapper} style={{ position: 'relative' }} onChange={handleChange} onKeyDown={onKeyDown} onBlur={close}>
       {renderInput({
         role: 'combobox',
         'aria-expanded': open,
