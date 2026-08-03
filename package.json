@@ -1,6 +1,6 @@
 {
   "name": "cactus-module-address-lookup-for-shop",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "private": true,
   "description": "Checkout address lookup for the Cactus shop module, powered by Ideal Postcodes."
 }

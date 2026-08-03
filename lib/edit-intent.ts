@@ -3,27 +3,25 @@
 //
 // Safari's AutoFill, a password manager and the browser's own saved address all
 // set the field's value and dispatch exactly the same input event a keystroke
-// does, so the field has no business trusting the event alone: it would look up
-// an address nobody typed, bill for it, and drop a suggestions list over a form
-// that was already correctly filled in.
+// does. There is no flag in the web platform saying which is which, so this is
+// inference - and two earlier attempts at it inferred wrongly on real Safari.
+// What is left is arranged so that a wrong inference is self-correcting rather
+// than permanent:
 //
-// Three things separate a shopper's edit from a fill:
-//
-//   1. Focus. A fill triggered from any of the other boxes lands on line 1
+//   1. Focus. A fill triggered from one of the other boxes lands on line 1
 //      while line 1 is not the focused element.
-//   2. A preceding beforeinput event. That fires for genuine editing - typing,
-//      pasting, deleting, composing, dictating - and not for a value the
-//      browser sets on the shopper's behalf. It is the reliable half of this;
-//      the rest is belt and braces.
-//   3. The shape of the change. Typing arrives one character at a time, while a
-//      fill arrives whole. Growing the field by more than a character without
-//      announcing itself as a paste is the browser helping.
-//
-// Chrome labels its own autofill 'insertReplacementText', which is rejected
-// outright. Deliberately no "recent keypress" fallback: a shopper who types a
-// couple of characters and then taps Safari's AutoFill suggestion does so
-// within a second of their last keystroke, which is precisely the case this is
-// here to catch.
+//   2. A preceding beforeinput event, which fires for editing and not for a
+//      value the browser sets on the shopper's behalf.
+//   3. The shape of the change, measured against the field's own last known
+//      value rather than the value prop. The prop is a render behind, and a
+//      browser that fires two input events for one fill would find the second
+//      one comparing the filled value against itself and calling it a no-op
+//      edit. Typing grows a field a character at a time; a fill arrives whole.
+//   4. The latch. Anything the first three cannot account for latches lookups
+//      off, and only a keydown - a physical key, which no autofill produces -
+//      unlatches them. So an event shape nobody predicted costs the shopper
+//      nothing more than having to press a key before suggestions resume,
+//      which is what "only when they are typing in the field" meant anyway.
 
 export const EDIT_INTENT_WINDOW_MS = 300
 
@@ -40,14 +38,19 @@ export type AlkChangeContext = {
   intent: AlkEditIntent
   // inputType carried by the change itself, where the browser provides one.
   inputType: string
+  // The field's value as this component last saw it, not the value prop.
   previousValue: string
   nextValue: string
+  // Set by any earlier change that could not be attributed to the shopper, and
+  // cleared only by a keydown in the field.
+  filled: boolean
   now: number
 }
 
 const PASTE_TYPES = new Set(['insertFromPaste', 'insertFromDrop', 'insertFromYank'])
 
-export function isShopperEdit({ focused, intent, inputType, previousValue, nextValue, now }: AlkChangeContext): boolean {
+export function isShopperEdit({ focused, intent, inputType, previousValue, nextValue, filled, now }: AlkChangeContext): boolean {
+  if (filled) return false
   if (!focused) return false
   if (!intent.at || now - intent.at > EDIT_INTENT_WINDOW_MS) return false
   const type = intent.inputType || inputType

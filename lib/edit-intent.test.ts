@@ -10,6 +10,7 @@ function ctx(overrides: Partial<AlkChangeContext> = {}): AlkChangeContext {
     inputType: 'insertText',
     previousValue: '12 High Stree',
     nextValue: '12 High Street',
+    filled: false,
     now: NOW,
     ...overrides,
   }
@@ -63,9 +64,9 @@ describe('isShopperEdit', () => {
     }))).toBe(false)
   })
 
-  // The case the first attempt at this got wrong: the shopper types a couple of
-  // characters, Safari offers their contact card, they tap it - all inside a
-  // second of the last keystroke.
+  // The case v0.1.1 got wrong: the shopper types a couple of characters,
+  // Safari offers their contact card, they tap it - all inside a second of the
+  // last keystroke.
   it('rejects an AutoFill tapped moments after typing', () => {
     expect(isShopperEdit(ctx({
       intent: { at: 0, inputType: '' },
@@ -90,5 +91,26 @@ describe('isShopperEdit', () => {
 
   it('rejects a stale edit intent', () => {
     expect(isShopperEdit(ctx({ intent: { at: NOW - 5_000, inputType: 'insertText' } }))).toBe(false)
+  })
+
+  // The latch. A browser that fires a second event for the same fill would
+  // otherwise find the filled value compared against itself and be waved
+  // through as an edit that changed nothing.
+  it('rejects a second event for the same fill, however innocent it looks', () => {
+    expect(isShopperEdit(ctx({
+      filled: true,
+      previousValue: '12 High Street',
+      nextValue: '12 High Street',
+    }))).toBe(false)
+  })
+
+  it('rejects everything while latched, whatever the browser says it is', () => {
+    for (const inputType of ['insertText', 'insertFromPaste', 'deleteContentBackward']) {
+      expect(isShopperEdit(ctx({ filled: true, intent: { at: NOW - 5, inputType }, inputType }))).toBe(false)
+    }
+  })
+
+  it('accepts again once a keydown has cleared the latch', () => {
+    expect(isShopperEdit(ctx({ filled: false }))).toBe(true)
   })
 })

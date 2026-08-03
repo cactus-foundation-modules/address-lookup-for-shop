@@ -15,7 +15,7 @@ const BASE = '/api/m/address-lookup-for-shop/public'
 const LISTBOX_ID = 'alk-address-suggestions'
 const NO_INTENT: AlkEditIntent = { at: 0, inputType: '' }
 
-export function AddressLookupField({ value, onSelect, renderInput }: ShopCheckoutAddressLookupProps) {
+export function AddressLookupField({ onSelect, renderInput }: ShopCheckoutAddressLookupProps) {
   const [suggestions, setSuggestions] = useState<AlkSuggestion[]>([])
   const [open, setOpen] = useState(false)
   const [activeIndex, setActiveIndex] = useState(-1)
@@ -29,6 +29,28 @@ export function AddressLookupField({ value, onSelect, renderInput }: ShopCheckou
   // editing and not for a value the browser fills in for them. Consumed by the
   // next change (see lib/edit-intent.ts for the whole argument).
   const editIntent = useRef<AlkEditIntent>(NO_INTENT)
+  // The field's value as this component last saw it. Kept here rather than read
+  // off the value prop, which is a render behind and would call the second of
+  // two input events for one fill a no-op edit.
+  const seenValue = useRef('')
+  // Latched by any change this component cannot put down to the shopper, and
+  // cleared only by a keydown in the field.
+  const filled = useRef(false)
+
+  // Diagnostics, off unless the checkout URL carries ?alkdebug=1. Telling a
+  // shopper's own browser apart from a filler is guesswork from the outside, so
+  // this prints the events the field actually receives on the device in front
+  // of you - phones have no console worth the name, hence a panel on the page.
+  // Nothing leaves the browser.
+  const [debugLines, setDebugLines] = useState<string[] | null>(null)
+  const debugOn = useRef<boolean | null>(null)
+  function trace(line: string) {
+    if (debugOn.current === null) {
+      debugOn.current = typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('alkdebug')
+    }
+    if (!debugOn.current) return
+    setDebugLines((lines) => [...(lines ?? []).slice(-14), line])
+  }
 
   useEffect(() => () => { if (debounce.current) clearTimeout(debounce.current) }, [])
 
@@ -39,31 +61,56 @@ export function AddressLookupField({ value, onSelect, renderInput }: ShopCheckou
     if (!node) return
     function stamp(e: Event) {
       const inputType = (e as InputEvent).inputType
-      editIntent.current = { at: Date.now(), inputType: typeof inputType === 'string' ? inputType : '' }
+      // e.timeStamp, not Date.now: the change event is compared against this
+      // and both come off the same event clock.
+      editIntent.current = { at: e.timeStamp, inputType: typeof inputType === 'string' ? inputType : '' }
+      trace(`beforeinput type="${editIntent.current.inputType || '(none)'}"`)
     }
     node.addEventListener('beforeinput', stamp)
     return () => node.removeEventListener('beforeinput', stamp)
   }, [])
+
+  // Reaching the field afresh: take its current value as the baseline, so the
+  // first edit is measured against what is actually in the box.
+  function onFocus(e: React.FocusEvent<HTMLDivElement>) {
+    const target = e.target as HTMLInputElement
+    seenValue.current = typeof target.value === 'string' ? target.value : ''
+    trace(`focus - baseline ${seenValue.current.length} chars`)
+  }
 
   function close() {
     setOpen(false)
     setActiveIndex(-1)
   }
 
-  function shopperTyped(e: React.FormEvent<HTMLDivElement>, target: HTMLInputElement) {
+  function shopperTyped(e: React.FormEvent<HTMLDivElement>, target: HTMLInputElement, now: number) {
     const intent = editIntent.current
     editIntent.current = NO_INTENT
     const native = e.nativeEvent as Partial<InputEvent>
-    return isShopperEdit({
+    const nextValue = typeof target.value === 'string' ? target.value : ''
+    const previousValue = seenValue.current
+    seenValue.current = nextValue
+    const verdict = isShopperEdit({
       focused: typeof document !== 'undefined' && document.activeElement === target,
       intent,
       inputType: typeof native?.inputType === 'string' ? native.inputType : '',
-      // The value prop is still the pre-change one here: shop's state update
-      // has been queued but React has not re-rendered yet.
-      previousValue: value,
-      nextValue: typeof target.value === 'string' ? target.value : '',
-      now: Date.now(),
+      previousValue,
+      nextValue,
+      filled: filled.current,
+      now,
     })
+    // Anything unaccounted for latches lookups off until a key is pressed in
+    // the field, so a browser doing something none of the checks predicted
+    // cannot keep sneaking through one event after another.
+    if (!verdict) filled.current = true
+    trace(
+      `change type="${(typeof native?.inputType === 'string' ? native.inputType : '') || '(none)'}"`
+      + ` intent="${intent.at ? intent.inputType || '(none)' : 'none'}"`
+      + ` focus=${typeof document !== 'undefined' && document.activeElement === target}`
+      + ` len ${previousValue.length}->${nextValue.length}`
+      + ` => ${verdict ? 'LOOKUP' : 'ignored'}`,
+    )
+    return verdict
   }
 
   // Driven by the shopper's keystrokes (React only fires onChange for user
@@ -71,6 +118,7 @@ export function AddressLookupField({ value, onSelect, renderInput }: ShopCheckou
   // here and cannot reopen the dropdown). Attached to the wrapper div and
   // caught on the bubble - shop's own input handler has already run.
   function handleChange(e: React.FormEvent<HTMLDivElement>) {
+    const now = e.timeStamp
     if (debounce.current) clearTimeout(debounce.current)
     if (unavailable.current) return
     const target = e.target as HTMLInputElement
@@ -78,7 +126,7 @@ export function AddressLookupField({ value, onSelect, renderInput }: ShopCheckou
     const seq = ++fetchSeq.current
     // An autofilled line 1 leaves a plain field behind, and drops any list
     // already showing - the address it was suggesting has just been replaced.
-    if (!shopperTyped(e, target)) {
+    if (!shopperTyped(e, target, now)) {
       setSuggestions([])
       close()
       return
@@ -111,13 +159,23 @@ export function AddressLookupField({ value, onSelect, renderInput }: ShopCheckou
       const res = await fetch(`${BASE}/resolve?id=${suggestion.id}`)
       if (!res.ok) return
       const data = await res.json()
-      if (data.address) onSelect(data.address)
+      if (data.address) {
+        // Shop refills the field from this, without an input event, so the
+        // baseline has to be moved by hand or the shopper's next keystroke
+        // looks like a fill arriving whole.
+        seenValue.current = typeof data.address.line1 === 'string' ? data.address.line1 : ''
+        onSelect(data.address)
+      }
     } catch {
       // Pick fizzles quietly; whatever the shopper typed is still in the field.
     }
   }
 
+  // A keydown is the one thing no autofill produces, so it is what lifts the
+  // latch: press a key in the field and suggestions are welcome again.
   function onKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
+    filled.current = false
+    trace(`keydown ${e.key} - latch cleared`)
     if (!open || suggestions.length === 0) return
     if (e.key === 'ArrowDown') {
       e.preventDefault()
@@ -140,7 +198,7 @@ export function AddressLookupField({ value, onSelect, renderInput }: ShopCheckou
     // Behaviour rides the bubble phase on this wrapper rather than being
     // injected as input handlers: shop's input keeps its own handlers, and the
     // hooks lint accepts ref-touching callbacks only as JSX event props.
-    <div ref={wrapper} style={{ position: 'relative' }} onChange={handleChange} onKeyDown={onKeyDown} onBlur={close}>
+    <div ref={wrapper} style={{ position: 'relative' }} onChange={handleChange} onKeyDown={onKeyDown} onFocus={onFocus} onBlur={close}>
       {renderInput({
         role: 'combobox',
         'aria-expanded': open,
@@ -197,6 +255,25 @@ export function AddressLookupField({ value, onSelect, renderInput }: ShopCheckou
             </li>
           ))}
         </ul>
+      )}
+      {debugLines && (
+        <pre
+          aria-hidden="true"
+          style={{
+            margin: '0.5rem 0 0',
+            padding: '0.5rem',
+            border: '1px dashed var(--color-border)',
+            borderRadius: 6,
+            background: 'var(--color-bg-subtle)',
+            color: 'var(--color-text-muted)',
+            fontSize: '0.6875rem',
+            lineHeight: 1.4,
+            whiteSpace: 'pre-wrap',
+            wordBreak: 'break-word',
+          }}
+        >
+          {debugLines.length === 0 ? 'address lookup: waiting for events' : debugLines.join('\n')}
+        </pre>
       )}
     </div>
   )
