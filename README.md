@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="module-art.webp" alt="Address Lookup for Shop" width="640" />
+</p>
+
 # Address Lookup for Shop
 
 Checkout address lookup for the Cactus shop module, powered by [Ideal Postcodes](https://ideal-postcodes.co.uk).
