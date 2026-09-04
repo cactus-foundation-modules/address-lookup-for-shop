@@ -1,6 +1,6 @@
 {
   "name": "address-lookup-for-shop",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "tablePrefix": "alk_",
   "description": "Lets shoppers find their delivery address by typing the first line of it at checkout. Suggestions appear as they type, one click fills in the whole address, and anyone who prefers typing it all out can simply carry on - the fields still work exactly as before. Powered by Ideal Postcodes, so you will need an API key from them (they charge per lookup, which is rather the point of only looking up what gets typed).",
   "requiresCoreVersion": "0.5.839",

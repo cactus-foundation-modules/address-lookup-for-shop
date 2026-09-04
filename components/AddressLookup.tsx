@@ -6,16 +6,20 @@
 // suggestions dropdown, keyboard handling and ARIA combobox wiring on top.
 // Anything going wrong - key missing, provider down, shopper offline - leaves
 // a perfectly ordinary text field behind.
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import type { ShopCheckoutAddressLookupProps } from '@/modules/shop/components/public/checkout-address-lookup'
 import type { AlkSuggestion } from '@/modules/address-lookup-for-shop/lib/types'
 import { isShopperEdit, type AlkEditIntent } from '@/modules/address-lookup-for-shop/lib/edit-intent'
 
 const BASE = '/api/m/address-lookup-for-shop/public'
-const LISTBOX_ID = 'alk-address-suggestions'
 const NO_INTENT: AlkEditIntent = { at: 0, inputType: '' }
 
 export function AddressLookupField({ onSelect, renderInput }: ShopCheckoutAddressLookupProps) {
+  // Per instance, not a constant: a checkout that asks for a billing address as
+  // well as a delivery one puts two of these on the same page, and a shared id
+  // would have both inputs pointing their aria-controls at whichever listbox
+  // the browser found first.
+  const LISTBOX_ID = useId()
   const [suggestions, setSuggestions] = useState<AlkSuggestion[]>([])
   const [open, setOpen] = useState(false)
   const [activeIndex, setActiveIndex] = useState(-1)
