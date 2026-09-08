@@ -1,7 +1,11 @@
 // Thin server-side client for the two Ideal Postcodes endpoints this module
 // uses. The key travels in the Authorization header, never the query string,
 // so it stays out of request logs.
+//
+// Ideal Postcodes bills only when a full address comes back, so autocomplete
+// costs nothing and resolve costs one credit.
 import type { AlkSuggestion } from '@/modules/address-lookup-for-shop/lib/types'
+import type { AlkProviderClient } from '@/modules/address-lookup-for-shop/lib/providers/types'
 import type { ShpLookupAddress } from '@/modules/shop/components/public/checkout-address-lookup'
 
 const BASE = 'https://api.ideal-postcodes.co.uk/v1'
@@ -20,7 +24,7 @@ export async function autocompleteAddresses(apiKey: string, query: string, limit
   return hits
     .filter((h): h is { udprn: number; suggestion: string } =>
       h != null && typeof h === 'object' && typeof (h as Record<string, unknown>).udprn === 'number' && typeof (h as Record<string, unknown>).suggestion === 'string')
-    .map((h) => ({ id: h.udprn, suggestion: h.suggestion }))
+    .map((h) => ({ id: String(h.udprn), suggestion: h.suggestion }))
 }
 
 export async function resolveUdprn(apiKey: string, udprn: number): Promise<ShpLookupAddress | null> {
@@ -38,4 +42,19 @@ export async function resolveUdprn(apiKey: string, udprn: number): Promise<ShpLo
   // addresses.
   const line2 = [s(r.line_2), s(r.line_3)].filter(Boolean).join(', ')
   return { line1, line2, city: s(r.post_town), county: s(r.county), postcode: s(r.postcode) }
+}
+
+// A UDPRN is a positive integer, and the string form has to round-trip so a
+// padded or signed id never reaches the provider.
+export function isUdprn(id: string): boolean {
+  const n = Number.parseInt(id, 10)
+  return Number.isInteger(n) && n > 0 && String(n) === id
+}
+
+export function createIdealPostcodesClient(apiKey: string): AlkProviderClient {
+  return {
+    isValidId: isUdprn,
+    autocomplete: (query) => autocompleteAddresses(apiKey, query),
+    resolve: (id) => resolveUdprn(apiKey, Number.parseInt(id, 10)),
+  }
 }

@@ -1,8 +1,8 @@
 {
   "name": "address-lookup-for-shop",
-  "version": "0.1.5",
+  "version": "0.1.7",
   "tablePrefix": "alk_",
-  "description": "Lets shoppers find their delivery address by typing the first line of it at checkout. Suggestions appear as they type, one click fills in the whole address, and anyone who prefers typing it all out can simply carry on - the fields still work exactly as before. Powered by Ideal Postcodes, so you will need an API key from them (they charge per lookup, which is rather the point of only looking up what gets typed).",
+  "description": "Lets shoppers find their delivery address by typing the first line of it at checkout. Suggestions appear as they type, one click fills in the whole address, and anyone who prefers typing it all out can simply carry on - the fields still work exactly as before. Choose who does the looking up: Ideal Postcodes, which reads the Royal Mail address file and charges a small amount each time a shopper picks an address, or Google, which covers the whole world and is free up to a monthly allowance most shops will never reach. Either way you will need an account with them and a key to paste in.",
   "requiresCoreVersion": "0.5.839",
   "requiresModules": [
     {
@@ -14,6 +14,11 @@
   "permissions": [],
   "navEntries": [],
   "cookieCategories": [],
+  "cspOrigins": {
+    "img": [
+      "https://maps.gstatic.com"
+    ]
+  },
   "settingsTabs": [
     {
       "id": "address-lookup-for-shop",
@@ -27,7 +32,7 @@
   "extensionPoints": [
     {
       "point": "shop.checkout-address-lookup",
-      "id": "ideal-postcodes",
+      "id": "address-lookup",
       "import": "./components/AddressLookup",
       "component": "AddressLookupField"
     }

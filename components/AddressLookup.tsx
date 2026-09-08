@@ -10,6 +10,7 @@ import { useEffect, useId, useRef, useState } from 'react'
 import type { ShopCheckoutAddressLookupProps } from '@/modules/shop/components/public/checkout-address-lookup'
 import type { AlkSuggestion } from '@/modules/address-lookup-for-shop/lib/types'
 import { isShopperEdit, type AlkEditIntent } from '@/modules/address-lookup-for-shop/lib/edit-intent'
+import { makeSessionToken } from '@/modules/address-lookup-for-shop/lib/session-token'
 
 const BASE = '/api/m/address-lookup-for-shop/public'
 const NO_INTENT: AlkEditIntent = { at: 0, inputType: '' }
@@ -23,9 +24,17 @@ export function AddressLookupField({ onSelect, renderInput }: ShopCheckoutAddres
   const [suggestions, setSuggestions] = useState<AlkSuggestion[]>([])
   const [open, setOpen] = useState(false)
   const [activeIndex, setActiveIndex] = useState(-1)
+  // Which provider answered, so Google's suggestions can carry the credit its
+  // terms require. Only read while suggestions are on screen, so it never
+  // needs clearing.
+  const [attribution, setAttribution] = useState<'google' | null>(null)
   // Latches shut on a 503 (switched off / no key) so an unconfigured install
   // never fires a request per keystroke for the whole checkout.
   const unavailable = useRef(false)
+  // Google bills a run of keystrokes plus the one details call that follows as
+  // a single session, keyed by this token. Minted on the first lookup and torn
+  // up after a pick, which is what Google asks for.
+  const sessionToken = useRef<string | null>(null)
   const fetchSeq = useRef(0)
   const debounce = useRef<ReturnType<typeof setTimeout> | null>(null)
   const wrapper = useRef<HTMLDivElement | null>(null)
@@ -142,13 +151,15 @@ export function AddressLookupField({ onSelect, renderInput }: ShopCheckoutAddres
     }
     debounce.current = setTimeout(async () => {
       try {
-        const res = await fetch(`${BASE}/autocomplete?q=${encodeURIComponent(query)}`)
+        if (!sessionToken.current) sessionToken.current = makeSessionToken()
+        const res = await fetch(`${BASE}/autocomplete?q=${encodeURIComponent(query)}&session=${sessionToken.current}`)
         if (res.status === 503) { unavailable.current = true; return }
         if (!res.ok) return
         const data = await res.json()
         if (seq !== fetchSeq.current) return
         const next: AlkSuggestion[] = Array.isArray(data.suggestions) ? data.suggestions : []
         setSuggestions(next)
+        setAttribution(data.attribution === 'google' ? 'google' : null)
         setOpen(next.length > 0)
         setActiveIndex(-1)
       } catch {
@@ -159,8 +170,14 @@ export function AddressLookupField({ onSelect, renderInput }: ShopCheckoutAddres
 
   async function pick(suggestion: AlkSuggestion) {
     close()
+    // The details call has to carry the same token as the keystrokes that led
+    // to it, and the session ends here either way: whatever happens next starts
+    // a fresh one.
+    const token = sessionToken.current
+    sessionToken.current = null
     try {
-      const res = await fetch(`${BASE}/resolve?id=${suggestion.id}`)
+      const session = token ? `&session=${token}` : ''
+      const res = await fetch(`${BASE}/resolve?id=${encodeURIComponent(suggestion.id)}${session}`)
       if (!res.ok) return
       const data = await res.json()
       if (data.address) {
@@ -215,50 +232,74 @@ export function AddressLookupField({ onSelect, renderInput }: ShopCheckoutAddres
         autoComplete: 'off',
       })}
       {open && suggestions.length > 0 && (
-        <ul
-          id={LISTBOX_ID}
-          role="listbox"
-          aria-label="Address suggestions"
+        <div
           style={{
             position: 'absolute',
             top: '100%',
             left: 0,
             right: 0,
             zIndex: 20,
-            margin: '0.25rem 0 0',
-            padding: '0.25rem',
-            listStyle: 'none',
+            marginTop: '0.25rem',
             background: 'var(--color-surface-raised, var(--color-surface))',
             border: '1px solid var(--color-border)',
             borderRadius: 6,
             boxShadow: 'var(--shadow-md)',
-            maxHeight: '16rem',
-            overflowY: 'auto',
+            overflow: 'hidden',
           }}
         >
-          {suggestions.map((s, i) => (
-            <li
-              key={s.id}
-              id={`${LISTBOX_ID}-${i}`}
-              role="option"
-              aria-selected={i === activeIndex}
-              // mousedown, not click: click lands after the input's blur has
-              // already closed the list.
-              onMouseDown={(e) => { e.preventDefault(); void pick(s) }}
-              onMouseEnter={() => setActiveIndex(i)}
-              style={{
-                padding: '0.5rem 0.625rem',
-                borderRadius: 4,
-                cursor: 'pointer',
-                fontSize: '0.875rem',
-                color: 'var(--color-text)',
-                background: i === activeIndex ? 'var(--color-bg-subtle)' : 'transparent',
-              }}
-            >
-              {s.suggestion}
-            </li>
-          ))}
-        </ul>
+          <ul
+            id={LISTBOX_ID}
+            role="listbox"
+            aria-label="Address suggestions"
+            style={{
+              margin: 0,
+              padding: '0.25rem',
+              listStyle: 'none',
+              maxHeight: '16rem',
+              overflowY: 'auto',
+            }}
+          >
+            {suggestions.map((s, i) => (
+              <li
+                key={s.id}
+                id={`${LISTBOX_ID}-${i}`}
+                role="option"
+                aria-selected={i === activeIndex}
+                // mousedown, not click: click lands after the input's blur has
+                // already closed the list.
+                onMouseDown={(e) => { e.preventDefault(); void pick(s) }}
+                onMouseEnter={() => setActiveIndex(i)}
+                style={{
+                  padding: '0.5rem 0.625rem',
+                  borderRadius: 4,
+                  cursor: 'pointer',
+                  fontSize: '0.875rem',
+                  color: 'var(--color-text)',
+                  background: i === activeIndex ? 'var(--color-bg-subtle)' : 'transparent',
+                }}
+              >
+                {s.suggestion}
+              </li>
+            ))}
+          </ul>
+          {attribution === 'google' && (
+            // Google's terms require the "Powered by Google" credit wherever its
+            // suggestions appear away from a Google map. The strip is white by
+            // hand rather than by token because Google publishes one logo per
+            // background and this is the on-white one - a themed surface would
+            // put it on the wrong colour half the time.
+            <div style={{ background: '#fff', padding: '0.3125rem 0.625rem', textAlign: 'right' }}>
+              {/* eslint-disable-next-line @next/next/no-img-element -- next/image would need maps.gstatic.com in core's remotePatterns, which is module-specific config core may not carry; this is a fixed-size remote brand asset. */}
+              <img
+                src="https://maps.gstatic.com/mapfiles/api-3/images/powered-by-google-on-white3.png"
+                alt="Powered by Google"
+                width={144}
+                height={18}
+                style={{ display: 'inline-block', width: 'auto', height: 18 }}
+              />
+            </div>
+          )}
+        </div>
       )}
       {debugLines && (
         <pre
