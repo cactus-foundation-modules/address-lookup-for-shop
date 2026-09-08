@@ -14,9 +14,18 @@
 import type { AlkSuggestion } from '@/modules/address-lookup-for-shop/lib/types'
 import type { AlkProviderClient } from '@/modules/address-lookup-for-shop/lib/providers/types'
 import type { ShpLookupAddress } from '@/modules/shop/components/public/checkout-address-lookup'
+import { describeProviderFailure } from '@/modules/address-lookup-for-shop/lib/providers/provider-error'
 
 const BASE = 'https://places.googleapis.com/v1'
-const AUTOCOMPLETE_MASK = 'suggestions.placePrediction.placeId,suggestions.placePrediction.text.text'
+// structuredFormat splits a prediction into the place's own name (mainText)
+// and the address around it (secondaryText). Autocomplete (New) is a single
+// Essentials SKU with no field-dependent tiering - unlike Place Details, where
+// the mask picks the tier - so asking for it costs nothing.
+const AUTOCOMPLETE_MASK = [
+  'suggestions.placePrediction.placeId',
+  'suggestions.placePrediction.text.text',
+  'suggestions.placePrediction.structuredFormat.mainText.text',
+].join(',')
 const DETAILS_MASK = 'addressComponents'
 
 export type GoogleAddressComponent = {
@@ -41,22 +50,54 @@ function componentTypes(c: GoogleAddressComponent): string[] {
   return Array.isArray(c.types) ? c.types.filter((t): t is string => typeof t === 'string') : []
 }
 
+// Compared rather than displayed: case, punctuation and doubled spaces all vary
+// between a prediction's wording and the address components' own.
+function normalise(value: string): string {
+  return value.toLowerCase().replace(/[.,]/g, ' ').replace(/\s+/g, ' ').trim()
+}
+
 // Google's address components carry no notion of a PAF delivery line, so the
 // two halves are rebuilt here: anything identifying a unit within a building
 // becomes line 1, the street itself becomes line 2, which is how PAF splits the
 // same address. A plain house-and-street address has no unit, so it lands on
 // line 1 with line 2 left empty - exactly as Ideal Postcodes returns it.
-export function mapGoogleAddress(components: GoogleAddressComponent[]): ShpLookupAddress | null {
+export function mapGoogleAddress(
+  components: GoogleAddressComponent[],
+  placeName: string | null = null,
+): ShpLookupAddress | null {
   const pick = (type: string): string => {
     const hit = components.find((c) => componentTypes(c).includes(type))
     return hit ? text(hit.longText) : ''
   }
 
   const street = [pick('street_number'), pick('route')].filter(Boolean).join(' ')
-  const unit = [pick('subpremise'), pick('premise')].filter(Boolean).join(', ')
-  const line1 = unit || street
+
+  // Everything naming a place WITHIN the street, in the order PAF writes it.
+  const parts: string[] = []
+  const seen = new Set<string>()
+  const add = (value: string) => {
+    const label = value.trim()
+    if (!label) return
+    const key = normalise(label)
+    // A name that is simply the street again is not a premises name: Google's
+    // mainText for an ordinary address is the address itself.
+    if (!key || key === normalise(street) || seen.has(key)) return
+    seen.add(key)
+    parts.push(label)
+  }
+  add(pick('subpremise'))
+  add(pick('premise'))
+  // An establishment's own name is kept OUT of the address components
+  // altogether - a marina, an office block, a business park comes back as bare
+  // street number and route, with the name only in displayName (a Pro-tier
+  // field) and in the prediction the shopper clicked. So it is carried in from
+  // the prediction: it is the half of the address they recognise, and dropping
+  // it silently replaced what they typed with a street they had never heard of.
+  add(placeName ?? '')
+
+  const line1 = parts.length > 0 ? parts.join(', ') : street
   if (!line1) return null
-  const line2 = unit ? street : ''
+  const line2 = parts.length > 0 ? street : ''
 
   return {
     line1,
@@ -95,7 +136,7 @@ export async function autocompleteAddresses(
     },
     body: JSON.stringify(body),
   })
-  if (!res.ok) throw new Error(`Google Places autocomplete failed: ${res.status}`)
+  if (!res.ok) throw await describeProviderFailure('Google Places autocomplete', res)
   const data = await res.json()
   const suggestions: unknown = data?.suggestions
   if (!Array.isArray(suggestions)) return []
@@ -108,9 +149,11 @@ export async function autocompleteAddresses(
     const p = prediction as Record<string, unknown>
     const id = text(p.placeId)
     const label = text((p.text as Record<string, unknown> | undefined)?.text)
+    const structured = p.structuredFormat as Record<string, unknown> | undefined
+    const name = text((structured?.mainText as Record<string, unknown> | undefined)?.text)
     // Query predictions carry no place id and cannot be resolved to an address.
     if (!id || !label || !isPlaceId(id)) continue
-    out.push({ id, suggestion: label })
+    out.push(name ? { id, suggestion: label, name } : { id, suggestion: label })
   }
   return out
 }
@@ -119,6 +162,7 @@ export async function resolvePlaceId(
   apiKey: string,
   placeId: string,
   sessionToken: string | null,
+  placeName: string | null = null,
 ): Promise<ShpLookupAddress | null> {
   const url = new URL(`${BASE}/places/${encodeURIComponent(placeId)}`)
   // Google takes the token as a query parameter on the details call, unlike the
@@ -129,17 +173,17 @@ export async function resolvePlaceId(
     headers: { 'X-Goog-Api-Key': apiKey, 'X-Goog-FieldMask': DETAILS_MASK },
   })
   if (res.status === 404) return null
-  if (!res.ok) throw new Error(`Google Places details failed: ${res.status}`)
+  if (!res.ok) throw await describeProviderFailure('Google Places details', res)
   const data = await res.json()
   const components: unknown = data?.addressComponents
   if (!Array.isArray(components)) return null
-  return mapGoogleAddress(components.filter((c): c is GoogleAddressComponent => c != null && typeof c === 'object'))
+  return mapGoogleAddress(components.filter((c): c is GoogleAddressComponent => c != null && typeof c === 'object'), placeName)
 }
 
 export function createGoogleClient(apiKey: string, regionCodes: string[]): AlkProviderClient {
   return {
     isValidId: isPlaceId,
     autocomplete: (query, sessionToken) => autocompleteAddresses(apiKey, query, sessionToken, regionCodes),
-    resolve: (id, sessionToken) => resolvePlaceId(apiKey, id, sessionToken),
+    resolve: (id, sessionToken, placeName) => resolvePlaceId(apiKey, id, sessionToken, placeName),
   }
 }

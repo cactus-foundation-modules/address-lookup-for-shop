@@ -62,6 +62,8 @@ export function AddressLookupSettingsTab() {
   const [googleDraft, setGoogleDraft] = useState('')
   const [regionDraft, setRegionDraft] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  const [testing, setTesting] = useState(false)
+  const [testResult, setTestResult] = useState<{ ok: boolean; message: string } | null>(null)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState('')
 
@@ -108,6 +110,20 @@ export function AddressLookupSettingsTab() {
       setError(e instanceof Error && e.message ? e.message : 'Save failed')
     } finally {
       setSaving(false)
+    }
+  }
+
+  async function runTest() {
+    setTesting(true)
+    setTestResult(null)
+    try {
+      const res = await fetch(`${BASE}/test`, { method: 'POST' })
+      const data = await res.json()
+      setTestResult({ ok: data.ok === true, message: typeof data.message === 'string' ? data.message : 'No answer from the test.' })
+    } catch {
+      setTestResult({ ok: false, message: 'Could not run the test.' })
+    } finally {
+      setTesting(false)
     }
   }
 
@@ -242,6 +258,31 @@ export function AddressLookupSettingsTab() {
       </section>
 
       {PROVIDERS.map((p) => keyCard(p.id))}
+
+      <section style={card}>
+        <h3 style={legend}>Check it works</h3>
+        <span style={hint}>
+          Looks one address up, right now, with the service and key above. A key that has been rejected looks exactly like a
+          working one from this screen, so it is worth asking.
+        </span>
+        <div style={{ marginTop: '0.75rem' }}>
+          <button type="button" className="btn" disabled={testing || saving} onClick={() => void runTest()}>
+            {testing ? 'Checking…' : 'Test the lookup'}
+          </button>
+        </div>
+        {testResult && (
+          <p
+            role="status"
+            style={{
+              ...hint,
+              marginTop: '0.75rem',
+              color: testResult.ok ? 'var(--color-success, var(--color-text))' : 'var(--color-danger)',
+            }}
+          >
+            {testResult.message}
+          </p>
+        )}
+      </section>
 
       {saved && <p style={{ color: 'var(--color-success, var(--color-text))', fontSize: '0.875rem' }}>Saved.</p>}
       {error && <p role="alert" style={{ color: 'var(--color-danger)', fontSize: '0.875rem' }}>{error}</p>}

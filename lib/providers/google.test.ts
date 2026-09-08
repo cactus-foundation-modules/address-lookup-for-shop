@@ -62,6 +62,46 @@ describe('mapGoogleAddress', () => {
   })
 })
 
+describe('mapGoogleAddress with the picked place name', () => {
+  // Google keeps an establishment's name out of addressComponents entirely.
+  // "Blackwall Basin Moorings" comes back as a bare 1 Myers Walk, which is a
+  // street the shopper has never heard of replacing the name they typed.
+  it('puts an establishment name on line 1 and its street on line 2', () => {
+    const address = mapGoogleAddress([...STREET, ...AREA], 'Blackwall Basin Moorings')
+    expect(address?.line1).toBe('Blackwall Basin Moorings')
+    expect(address?.line2).toBe('12 High Street')
+  })
+
+  it('ignores a name that is only the street again', () => {
+    const address = mapGoogleAddress([...STREET, ...AREA], '12 High Street')
+    expect(address?.line1).toBe('12 High Street')
+    expect(address?.line2).toBe('')
+  })
+
+  it('compares the name to the street past case and punctuation', () => {
+    const address = mapGoogleAddress([...STREET], '12  high street,')
+    expect(address?.line1).toBe('12 High Street')
+    expect(address?.line2).toBe('')
+  })
+
+  it('keeps a flat number ahead of the building it is in', () => {
+    const address = mapGoogleAddress([c('Flat 3', 'subpremise'), ...STREET], 'Rowan House')
+    expect(address?.line1).toBe('Flat 3, Rowan House')
+    expect(address?.line2).toBe('12 High Street')
+  })
+
+  it('does not repeat a name the components already gave', () => {
+    const address = mapGoogleAddress([c('Rowan House', 'premise'), ...STREET], 'Rowan House')
+    expect(address?.line1).toBe('Rowan House')
+    expect(address?.line2).toBe('12 High Street')
+  })
+
+  it('still returns null when the name is all there is', () => {
+    expect(mapGoogleAddress([], 'Blackwall Basin Moorings')?.line1).toBe('Blackwall Basin Moorings')
+    expect(mapGoogleAddress([], '')).toBeNull()
+  })
+})
+
 describe('isPlaceId', () => {
   it('accepts the ids Google issues', () => {
     expect(isPlaceId('ChIJj61dQgK6j4AR4GeTYWZsKWw')).toBe(true)

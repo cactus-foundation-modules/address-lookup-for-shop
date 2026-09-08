@@ -36,7 +36,10 @@ export async function GET(request: NextRequest) {
       attribution: active.provider === 'google' ? 'google' : null,
     }
     return NextResponse.json(body)
-  } catch {
+  } catch (error) {
+    // The provider's own words, to the server log only - see
+    // lib/providers/provider-error.ts for why a bare 502 was not enough.
+    console.error(`[address-lookup] autocomplete failed via ${active.provider}:`, error instanceof Error ? error.message : error)
     // Provider trouble must never break checkout - the field degrades to a
     // plain input when suggestions stop coming.
     return NextResponse.json({ error: 'Address lookup is temporarily unavailable.' }, { status: 502 })

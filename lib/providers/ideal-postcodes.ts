@@ -7,6 +7,7 @@
 import type { AlkSuggestion } from '@/modules/address-lookup-for-shop/lib/types'
 import type { AlkProviderClient } from '@/modules/address-lookup-for-shop/lib/providers/types'
 import type { ShpLookupAddress } from '@/modules/shop/components/public/checkout-address-lookup'
+import { describeProviderFailure } from '@/modules/address-lookup-for-shop/lib/providers/provider-error'
 
 const BASE = 'https://api.ideal-postcodes.co.uk/v1'
 
@@ -17,7 +18,7 @@ function authHeaders(apiKey: string): HeadersInit {
 export async function autocompleteAddresses(apiKey: string, query: string, limit = 8): Promise<AlkSuggestion[]> {
   const url = `${BASE}/autocomplete/addresses?query=${encodeURIComponent(query)}&limit=${limit}`
   const res = await fetch(url, { headers: authHeaders(apiKey) })
-  if (!res.ok) throw new Error(`Ideal Postcodes autocomplete failed: ${res.status}`)
+  if (!res.ok) throw await describeProviderFailure('Ideal Postcodes autocomplete', res)
   const data = await res.json()
   const hits: unknown = data?.result?.hits
   if (!Array.isArray(hits)) return []
@@ -30,7 +31,7 @@ export async function autocompleteAddresses(apiKey: string, query: string, limit
 export async function resolveUdprn(apiKey: string, udprn: number): Promise<ShpLookupAddress | null> {
   const res = await fetch(`${BASE}/udprn/${udprn}`, { headers: authHeaders(apiKey) })
   if (res.status === 404) return null
-  if (!res.ok) throw new Error(`Ideal Postcodes udprn lookup failed: ${res.status}`)
+  if (!res.ok) throw await describeProviderFailure('Ideal Postcodes lookup', res)
   const data = await res.json()
   const r = data?.result
   if (!r || typeof r !== 'object') return null
@@ -55,6 +56,7 @@ export function createIdealPostcodesClient(apiKey: string): AlkProviderClient {
   return {
     isValidId: isUdprn,
     autocomplete: (query) => autocompleteAddresses(apiKey, query),
+    // No placeName: PAF's own line_1/line_2 already carry the building name.
     resolve: (id) => resolveUdprn(apiKey, Number.parseInt(id, 10)),
   }
 }

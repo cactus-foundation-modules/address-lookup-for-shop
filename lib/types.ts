@@ -44,6 +44,11 @@ export type AlkSettingsView = {
 export type AlkSuggestion = {
   id: string
   suggestion: string
+  // The place's own name, where the provider distinguishes one from the street
+  // it stands on (Google does; Ideal Postcodes has no such notion because PAF
+  // already carries the building name in its address lines). Sent back on
+  // resolve, because the details call does not return it in the cheap tier.
+  name?: string
 }
 
 // Google requires a "Powered by Google" credit wherever its suggestions appear

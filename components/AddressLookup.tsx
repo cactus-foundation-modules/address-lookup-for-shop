@@ -177,7 +177,11 @@ export function AddressLookupField({ onSelect, renderInput }: ShopCheckoutAddres
     sessionToken.current = null
     try {
       const session = token ? `&session=${token}` : ''
-      const res = await fetch(`${BASE}/resolve?id=${encodeURIComponent(suggestion.id)}${session}`)
+      // The provider may have named the place separately from its street (a
+      // marina, an office block); the details call will not give that back
+      // cheaply, so it goes back the way it came.
+      const named = suggestion.name ? `&name=${encodeURIComponent(suggestion.name)}` : ''
+      const res = await fetch(`${BASE}/resolve?id=${encodeURIComponent(suggestion.id)}${session}${named}`)
       if (!res.ok) return
       const data = await res.json()
       if (data.address) {

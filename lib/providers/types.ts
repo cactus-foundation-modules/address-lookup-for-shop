@@ -12,5 +12,8 @@ export type AlkProviderClient = {
   isValidId(id: string): boolean
   // sessionToken is Google's billing grouping; Ideal Postcodes ignores it.
   autocomplete(query: string, sessionToken: string | null): Promise<AlkSuggestion[]>
-  resolve(id: string, sessionToken: string | null): Promise<ShpLookupAddress | null>
+  // placeName is the name shown against the suggestion the shopper picked, for
+  // providers whose details call will not give it back cheaply. Optional by
+  // nature: a provider that does not need it ignores it.
+  resolve(id: string, sessionToken: string | null, placeName: string | null): Promise<ShpLookupAddress | null>
 }
