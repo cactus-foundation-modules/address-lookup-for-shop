@@ -4,7 +4,8 @@
 // running up the bill (a secondary guard - the client already debounces and
 // holds off until three characters).
 import { NextRequest, NextResponse } from 'next/server'
-import { checkInMemoryRateLimit, getClientIpFromRequest } from '@/modules/shop/lib/rate-limit'
+import { checkInMemoryRateLimit } from '@/modules/shop/lib/rate-limit'
+import { getClientIp } from '@/lib/auth/rate-limit'
 import { getSettings } from '@/modules/address-lookup-for-shop/lib/db/settings'
 import { resolveActiveProvider } from '@/modules/address-lookup-for-shop/lib/providers'
 import { normaliseSessionToken } from '@/modules/address-lookup-for-shop/lib/session-token'
@@ -15,7 +16,7 @@ export async function GET(request: NextRequest) {
   const empty: AlkAutocompleteResponse = { suggestions: [], attribution: null }
   if (q.length < 3 || q.length > 200) return NextResponse.json(empty)
 
-  const ip = getClientIpFromRequest(request)
+  const ip = await getClientIp()
   if (!checkInMemoryRateLimit(`alk:autocomplete:${ip}`, 60, 60_000)) {
     return NextResponse.json({ error: 'Too many lookups - slow down a little.' }, { status: 429 })
   }

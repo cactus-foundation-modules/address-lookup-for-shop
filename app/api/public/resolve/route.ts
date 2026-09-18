@@ -3,7 +3,8 @@
 // The id is opaque here - a UDPRN for Ideal Postcodes, a place id for Google -
 // so the provider itself says whether it could have issued it.
 import { NextRequest, NextResponse } from 'next/server'
-import { checkInMemoryRateLimit, getClientIpFromRequest } from '@/modules/shop/lib/rate-limit'
+import { checkInMemoryRateLimit } from '@/modules/shop/lib/rate-limit'
+import { getClientIp } from '@/lib/auth/rate-limit'
 import { getSettings } from '@/modules/address-lookup-for-shop/lib/db/settings'
 import { resolveActiveProvider } from '@/modules/address-lookup-for-shop/lib/providers'
 import { normaliseSessionToken } from '@/modules/address-lookup-for-shop/lib/session-token'
@@ -19,7 +20,7 @@ export async function GET(request: NextRequest) {
   const id = request.nextUrl.searchParams.get('id') ?? ''
   const placeName = (request.nextUrl.searchParams.get('name') ?? '').trim().slice(0, MAX_PLACE_NAME) || null
 
-  const ip = getClientIpFromRequest(request)
+  const ip = await getClientIp()
   if (!checkInMemoryRateLimit(`alk:resolve:${ip}`, 30, 60_000)) {
     return NextResponse.json({ error: 'Too many lookups - slow down a little.' }, { status: 429 })
   }
