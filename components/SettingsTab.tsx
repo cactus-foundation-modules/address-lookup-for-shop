@@ -29,14 +29,6 @@ const PROVIDERS: { id: AlkProvider; name: string; blurb: string }[] = [
   },
 ]
 
-const card = {
-  border: '1px solid var(--color-border)',
-  borderRadius: 12,
-  padding: '1rem 1.25rem',
-  background: 'var(--color-surface)',
-  marginBottom: '1.25rem',
-} as const
-
 const legend = { fontSize: '0.9375rem', fontWeight: 600, margin: '0 0 0.25rem' } as const
 const hint = { display: 'block', fontSize: '0.8125rem', color: 'var(--color-text-muted)', marginTop: '0.25rem' } as const
 const inputStyle = {
@@ -154,7 +146,7 @@ export function AddressLookupSettingsTab() {
     const patchFor = (value: string): Patch => (provider === 'google' ? { googleKey: value } : { idealPostcodesKey: value })
 
     return (
-      <section key={provider} style={card}>
+      <section key={provider} className="card">
         <h3 style={legend}>
           {meta.name} API key
           {!inUse && <span style={{ fontWeight: 400, color: 'var(--color-text-muted)' }}> (not in use)</span>}
@@ -211,7 +203,7 @@ export function AddressLookupSettingsTab() {
           {saving ? 'Saving…' : 'Save changes'}
         </button>
       </SettingsHeaderActions>
-      <section style={card}>
+      <section className="card">
         <h3 style={legend}>Address lookup at checkout</h3>
         <label style={{ display: 'flex', gap: '0.6rem', alignItems: 'flex-start', cursor: 'pointer', marginTop: '0.75rem' }}>
           <input
@@ -233,7 +225,7 @@ export function AddressLookupSettingsTab() {
         )}
       </section>
 
-      <section style={card}>
+      <section className="card">
         <h3 style={legend}>Who does the looking up</h3>
         <span style={hint}>Both keys are kept, so you can try the other one and switch back without pasting anything again.</span>
         <div role="radiogroup" aria-label="Address lookup service" style={{ marginTop: '0.75rem', display: 'grid', gap: '0.75rem' }}>
@@ -258,7 +250,7 @@ export function AddressLookupSettingsTab() {
 
       {PROVIDERS.map((p) => keyCard(p.id))}
 
-      <section style={card}>
+      <section className="card">
         <h3 style={legend}>Check it works</h3>
         <span style={hint}>
           Looks one address up, right now, with the service and key above. A key that has been rejected looks exactly like a
