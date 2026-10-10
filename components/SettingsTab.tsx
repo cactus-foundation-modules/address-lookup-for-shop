@@ -3,6 +3,7 @@
 // Sub-tab of shop's settings tab, hosted through 'shop.settings-sub-tabs'.
 // Shop lends the space and nothing else: own fetch, own save, own module API.
 import { useCallback, useEffect, useState } from 'react'
+import { SettingsHeaderActions, SettingsHeaderStatus } from '@/components/admin/SettingsHeaderActions'
 import type { AlkKeyView, AlkProvider, AlkSettingsView } from '@/modules/address-lookup-for-shop/lib/types'
 
 const BASE = '/api/m/address-lookup-for-shop/admin'
@@ -46,8 +47,8 @@ const inputStyle = {
   borderRadius: 8,
   background: 'var(--color-bg)',
   color: 'var(--color-fg)',
-  maxWidth: 420,
-  width: '100%',
+  flex: '1 1 14rem',
+  minWidth: 0,
 } as const
 
 function keyStatusText(view: AlkKeyView): string {
@@ -135,6 +136,14 @@ export function AddressLookupSettingsTab() {
 
   const view = settings
   const regionValue = regionDraft ?? view.googleRegionCodes.join(', ')
+  // Everything typed and not yet saved goes up in one go. The switches and the
+  // choice of service save themselves the moment they are touched.
+  const pending: Patch = {
+    ...(idealDraft.trim() !== '' ? { idealPostcodesKey: idealDraft.trim() } : {}),
+    ...(googleDraft.trim() !== '' ? { googleKey: googleDraft.trim() } : {}),
+    ...(regionDraft !== null ? { googleRegionCodes: regionValue } : {}),
+  }
+  const hasPending = Object.keys(pending).length > 0
 
   function keyCard(provider: AlkProvider) {
     const meta = PROVIDERS.find((p) => p.id === provider)!
@@ -161,14 +170,6 @@ export function AddressLookupSettingsTab() {
             onChange={(e) => setDraft(e.target.value)}
             style={inputStyle}
           />
-          <button
-            type="button"
-            className="btn btn-primary"
-            disabled={saving || draft.trim() === ''}
-            onClick={() => void save(patchFor(draft.trim()))}
-          >
-            Save key
-          </button>
           {status.keySource === 'settings' && (
             <button type="button" className="btn" disabled={saving} onClick={() => void save(patchFor(''))}>
               Remove key
@@ -194,14 +195,6 @@ export function AddressLookupSettingsTab() {
                 onChange={(e) => setRegionDraft(e.target.value)}
                 style={inputStyle}
               />
-              <button
-                type="button"
-                className="btn"
-                disabled={saving || regionDraft === null}
-                onClick={() => void save({ googleRegionCodes: regionValue })}
-              >
-                Save countries
-              </button>
             </div>
             <span style={hint}>Two-letter country codes, separated by commas. Leave it at gb for a UK-only shop. Fifteen at most.</span>
           </div>
@@ -211,7 +204,13 @@ export function AddressLookupSettingsTab() {
   }
 
   return (
-    <div>
+    <div className="settings-masonry">
+      <SettingsHeaderActions>
+        <SettingsHeaderStatus message={saved ? 'Saved' : null} error={error} />
+        <button type="button" className="btn btn-primary" disabled={saving || !hasPending} onClick={() => void save(pending)}>
+          {saving ? 'Saving…' : 'Save changes'}
+        </button>
+      </SettingsHeaderActions>
       <section style={card}>
         <h3 style={legend}>Address lookup at checkout</h3>
         <label style={{ display: 'flex', gap: '0.6rem', alignItems: 'flex-start', cursor: 'pointer', marginTop: '0.75rem' }}>
@@ -284,8 +283,6 @@ export function AddressLookupSettingsTab() {
         )}
       </section>
 
-      {saved && <p style={{ color: 'var(--color-success, var(--color-text))', fontSize: '0.875rem' }}>Saved.</p>}
-      {error && <p role="alert" style={{ color: 'var(--color-danger)', fontSize: '0.875rem' }}>{error}</p>}
     </div>
   )
 }
