@@ -5,6 +5,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { SettingsHeaderActions, SettingsHeaderStatus } from '@/components/admin/SettingsHeaderActions'
 import type { AlkKeyView, AlkProvider, AlkSettingsView } from '@/modules/address-lookup-for-shop/lib/types'
+import { InfoTip } from '@/components/admin/InfoTip'
 
 const BASE = '/api/m/address-lookup-for-shop/admin'
 
@@ -29,19 +30,6 @@ const PROVIDERS: { id: AlkProvider; name: string; blurb: string }[] = [
   },
 ]
 
-const legend = { fontSize: '0.9375rem', fontWeight: 600, margin: '0 0 0.25rem' } as const
-const hint = { display: 'block', fontSize: '0.8125rem', color: 'var(--color-text-muted)', marginTop: '0.25rem' } as const
-const inputStyle = {
-  font: 'inherit',
-  fontSize: '0.875rem',
-  padding: '0.5rem 0.625rem',
-  border: '1px solid var(--color-border)',
-  borderRadius: 8,
-  background: 'var(--color-bg)',
-  color: 'var(--color-fg)',
-  flex: '1 1 14rem',
-  minWidth: 0,
-} as const
 
 function keyStatusText(view: AlkKeyView): string {
   if (!view.hasKey) return 'No key yet.'
@@ -146,52 +134,49 @@ export function AddressLookupSettingsTab() {
     const patchFor = (value: string): Patch => (provider === 'google' ? { googleKey: value } : { idealPostcodesKey: value })
 
     return (
-      <section key={provider} className="card">
-        <h3 style={legend}>
-          {meta.name} API key
-          {!inUse && <span style={{ fontWeight: 400, color: 'var(--color-text-muted)' }}> (not in use)</span>}
-        </h3>
-        <span style={hint}>{keyStatusText(status)}</span>
-        <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.75rem', flexWrap: 'wrap' }}>
-          <input
-            type="password"
-            autoComplete="off"
-            placeholder="Paste a new key"
-            aria-label={`${meta.name} API key`}
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            style={inputStyle}
-          />
-          {status.keySource === 'settings' && (
-            <button type="button" className="btn" disabled={saving} onClick={() => void save(patchFor(''))}>
-              Remove key
-            </button>
-          )}
+      <div key={provider} className="settings-group">
+        <div className="field">
+          <label htmlFor={`alk-key-${provider}`}>
+            {meta.name} API key
+            {!inUse && <span style={{ fontWeight: 400, color: 'var(--color-text-muted)' }}> (not in use)</span>}
+            <InfoTip>
+              {provider === 'google'
+                ? 'A Google Cloud key with the Places API switched on. The key stays on the server and is never sent to shoppers.'
+                : 'Keys come from ideal-postcodes.co.uk. The key stays on the server and is never sent to shoppers.'}
+            </InfoTip>
+          </label>
+          <div style={{ display: 'flex', gap: '0.5rem' }}>
+            <input
+              id={`alk-key-${provider}`}
+              type="password"
+              autoComplete="off"
+              placeholder="Paste a new key"
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              style={{ flex: 1, minWidth: 0 }}
+            />
+            {status.keySource === 'settings' && (
+              <button type="button" className="btn btn-secondary" disabled={saving} onClick={() => void save(patchFor(''))}>
+                Remove key
+              </button>
+            )}
+          </div>
+          <span className="field-hint">{keyStatusText(status)}</span>
         </div>
-        <span style={hint}>
-          {provider === 'google'
-            ? 'A Google Cloud key with the Places API switched on. The key stays on the server and is never sent to shoppers.'
-            : 'Keys come from ideal-postcodes.co.uk. The key stays on the server and is never sent to shoppers.'}
-        </span>
         {provider === 'google' && (
-          <div style={{ marginTop: '0.875rem' }}>
-            <label htmlFor="alk-regions" style={{ display: 'block', fontSize: '0.875rem', color: 'var(--color-text)' }}>
-              Countries to suggest addresses in
-            </label>
-            <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.375rem', flexWrap: 'wrap' }}>
-              <input
-                id="alk-regions"
-                type="text"
-                value={regionValue}
-                placeholder="gb"
-                onChange={(e) => setRegionDraft(e.target.value)}
-                style={inputStyle}
-              />
-            </div>
-            <span style={hint}>Two-letter country codes, separated by commas. Leave it at gb for a UK-only shop. Fifteen at most.</span>
+          <div className="field">
+            <label htmlFor="alk-regions">Countries to suggest addresses in</label>
+            <input
+              id="alk-regions"
+              type="text"
+              value={regionValue}
+              placeholder="gb"
+              onChange={(e) => setRegionDraft(e.target.value)}
+            />
+            <span className="field-hint">Two-letter country codes, separated by commas. Leave it at gb for a UK-only shop. Fifteen at most.</span>
           </div>
         )}
-      </section>
+      </div>
     )
   }
 
@@ -204,77 +189,63 @@ export function AddressLookupSettingsTab() {
         </button>
       </SettingsHeaderActions>
       <section className="card">
-        <h3 style={legend}>Address lookup at checkout</h3>
-        <label style={{ display: 'flex', gap: '0.6rem', alignItems: 'flex-start', cursor: 'pointer', marginTop: '0.75rem' }}>
+        <h3 className="card-title">
+          Address lookup at checkout
+          <InfoTip>Both keys are kept, so you can try the other service and switch back without pasting anything again.</InfoTip>
+        </h3>
+        <label className="settings-check">
           <input
             type="checkbox"
             checked={view.enabled}
             disabled={saving}
             onChange={(e) => void save({ enabled: e.target.checked })}
-            style={{ marginTop: '0.2rem' }}
           />
-          <span>
-            <span style={{ display: 'block', color: 'var(--color-text)' }}>Suggest addresses as shoppers type</span>
-            <span style={hint}>Switched off, checkout shows the ordinary address fields and nothing is looked up (or billed).</span>
-          </span>
+          Suggest addresses as shoppers type
+          <InfoTip>Switched off, checkout shows the ordinary address fields and nothing is looked up (or billed).</InfoTip>
         </label>
+        <div className="settings-group">
+          <div>
+            <button type="button" className="btn btn-secondary" disabled={testing || saving} onClick={() => void runTest()}>
+              {testing ? 'Checking…' : 'Test the lookup'}
+            </button>{' '}
+            <InfoTip>Looks one address up, right now, with the service and key below. A key that has been rejected looks exactly like a working one from this screen, so it is worth asking.</InfoTip>
+          </div>
+          {testResult && (
+            <p
+              role="status"
+              className="field-hint"
+              style={{ color: testResult.ok ? 'var(--color-success, var(--color-text))' : 'var(--color-danger)' }}
+            >
+              {testResult.message}
+            </p>
+          )}
+        </div>
         {view.enabled && !view.ready && (
-          <p role="alert" style={{ ...hint, color: 'var(--color-danger)', marginTop: '0.75rem' }}>
+          <div className="alert alert-warning" role="alert">
             Nothing will be suggested until the chosen service below has a key.
-          </p>
+          </div>
         )}
-      </section>
-
-      <section className="card">
-        <h3 style={legend}>Who does the looking up</h3>
-        <span style={hint}>Both keys are kept, so you can try the other one and switch back without pasting anything again.</span>
-        <div role="radiogroup" aria-label="Address lookup service" style={{ marginTop: '0.75rem', display: 'grid', gap: '0.75rem' }}>
+        <div role="radiogroup" aria-label="Address lookup service" className="settings-fields">
           {PROVIDERS.map((p) => (
-            <label key={p.id} style={{ display: 'flex', gap: '0.6rem', alignItems: 'flex-start', cursor: 'pointer' }}>
-              <input
-                type="radio"
-                name="alk-provider"
-                checked={view.provider === p.id}
-                disabled={saving}
-                onChange={() => void save({ provider: p.id })}
-                style={{ marginTop: '0.2rem' }}
-              />
-              <span>
-                <span style={{ display: 'block', color: 'var(--color-text)' }}>{p.name}</span>
-                <span style={hint}>{p.blurb}</span>
-              </span>
-            </label>
+            <div key={p.id} className="settings-group">
+              <label className="settings-check">
+                <input
+                  type="radio"
+                  name="alk-provider"
+                  checked={view.provider === p.id}
+                  disabled={saving}
+                  onChange={() => void save({ provider: p.id })}
+                />
+                Use {p.name}
+              </label>
+              <span className="field-hint">{p.blurb}</span>
+            </div>
           ))}
         </div>
-      </section>
-
-      {PROVIDERS.map((p) => keyCard(p.id))}
-
-      <section className="card">
-        <h3 style={legend}>Check it works</h3>
-        <span style={hint}>
-          Looks one address up, right now, with the service and key above. A key that has been rejected looks exactly like a
-          working one from this screen, so it is worth asking.
-        </span>
-        <div style={{ marginTop: '0.75rem' }}>
-          <button type="button" className="btn" disabled={testing || saving} onClick={() => void runTest()}>
-            {testing ? 'Checking…' : 'Test the lookup'}
-          </button>
+        <div className="settings-fields">
+          {PROVIDERS.map((p) => keyCard(p.id))}
         </div>
-        {testResult && (
-          <p
-            role="status"
-            style={{
-              ...hint,
-              marginTop: '0.75rem',
-              color: testResult.ok ? 'var(--color-success, var(--color-text))' : 'var(--color-danger)',
-            }}
-          >
-            {testResult.message}
-          </p>
-        )}
       </section>
-
     </div>
   )
 }
