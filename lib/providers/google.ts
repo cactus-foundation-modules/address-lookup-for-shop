@@ -15,6 +15,7 @@ import type { AlkSuggestion } from '@/modules/address-lookup-for-shop/lib/types'
 import type { AlkProviderClient } from '@/modules/address-lookup-for-shop/lib/providers/types'
 import type { ShpLookupAddress } from '@/modules/shop/components/public/checkout-address-lookup'
 import { describeProviderFailure } from '@/modules/address-lookup-for-shop/lib/providers/provider-error'
+import { deliveryCounty } from '@/modules/address-lookup-for-shop/lib/county'
 
 const BASE = 'https://places.googleapis.com/v1'
 // structuredFormat splits a prediction into the place's own name (mainText)
@@ -99,15 +100,17 @@ export function mapGoogleAddress(
   if (!line1) return null
   const line2 = parts.length > 0 ? street : ''
 
+  // postal_town is the UK post town; locality covers everywhere Google does
+  // not publish one.
+  const city = pick('postal_town') || pick('locality')
   return {
     line1,
     line2,
-    // postal_town is the UK post town; locality covers everywhere Google does
-    // not publish one.
-    city: pick('postal_town') || pick('locality'),
+    city,
     // Level 2 is the county. Level 1 in the UK is the nation ("England"), which
     // is not what a delivery label wants, so there is deliberately no fallback.
-    county: pick('administrative_area_level_2'),
+    // Tidied to what a person would write - no "Greater London" (see county.ts).
+    county: deliveryCounty(pick('administrative_area_level_2'), city),
     postcode: pick('postal_code'),
   }
 }

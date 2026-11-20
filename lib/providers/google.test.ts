@@ -42,6 +42,15 @@ describe('mapGoogleAddress', () => {
     expect(address?.city).toBe('Ballymena')
   })
 
+  it('leaves Greater London off a London address', () => {
+    const address = mapGoogleAddress([
+      c('22', 'street_number'), c('Percy Street', 'route'), c('London', 'postal_town'),
+      c('Greater London', 'administrative_area_level_2'), c('England', 'administrative_area_level_1'), c('W1T 2BU', 'postal_code'),
+    ])
+    expect(address?.city).toBe('London')
+    expect(address?.county).toBe('')
+  })
+
   it('never treats the UK nation as a county', () => {
     const address = mapGoogleAddress([...STREET, c('England', 'administrative_area_level_1')])
     expect(address?.county).toBe('')

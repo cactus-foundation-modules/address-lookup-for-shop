@@ -8,6 +8,7 @@ import type { AlkSuggestion } from '@/modules/address-lookup-for-shop/lib/types'
 import type { AlkProviderClient } from '@/modules/address-lookup-for-shop/lib/providers/types'
 import type { ShpLookupAddress } from '@/modules/shop/components/public/checkout-address-lookup'
 import { describeProviderFailure } from '@/modules/address-lookup-for-shop/lib/providers/provider-error'
+import { deliveryCounty } from '@/modules/address-lookup-for-shop/lib/county'
 
 const BASE = 'https://api.ideal-postcodes.co.uk/v1'
 
@@ -42,7 +43,10 @@ export async function resolveUdprn(apiKey: string, udprn: number): Promise<ShpLo
   // fires when both are present, which PAF reserves for genuinely long
   // addresses.
   const line2 = [s(r.line_2), s(r.line_3)].filter(Boolean).join(', ')
-  return { line1, line2, city: s(r.post_town), county: s(r.county), postcode: s(r.postcode) }
+  const city = s(r.post_town)
+  // Tidied the same way as Google's, so the provider in use never decides
+  // whether a London address goes out labelled "Greater London" (see county.ts).
+  return { line1, line2, city, county: deliveryCounty(s(r.county), city), postcode: s(r.postcode) }
 }
 
 // A UDPRN is a positive integer, and the string form has to round-trip so a
